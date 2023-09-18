@@ -1,6 +1,8 @@
 import socket
 import encryption
 import json
+import uuid
+import os
 
 
 def receiveData(numOfBytes: int,
@@ -82,3 +84,17 @@ def receiveDynamicData(socketToReceiveFrom: socket.socket, AESKey: bytes) -> (st
     sizeOfData = header["length"]  # To know the length of data
     data = receiveEncryptedData(sizeOfData, socketToReceiveFrom, AESKey)  # Then, receive the actual data
     return header["type"], header["encoding"], data
+
+def sendSignedData(socketToSendTo: socket.socket, data: bytes, gpg):
+    signedData = gpg.sign(data).data
+    socketToSendTo.send(signedData)
+
+def receiveSignedData(socketToReceive: socket.socket, length: int, gpg) -> bytes:
+    data_and_signature = socketToReceive.recv(length)
+    filename = str(uuid.uuid4())
+    if not gpg.verify(data_and_signature, extra_args=["-o", "./" + filename]):
+        raise ValueError("Bad signature")
+    with open(filename, "rb") as file:
+        data = file.read()
+    os.remove(filename)
+    return data

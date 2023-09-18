@@ -4,12 +4,16 @@ import encryption
 import socket
 import json
 import time
+import os
 from events import Event
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
+import gnupg
+
+gpg = gnupg.GPG(gnupghome="/home/eric/.gnupg")
 
 lock = threading.Lock()
 
@@ -39,14 +43,23 @@ class Client:
             received = self.sock.recv(2)
             if received == b"\x01":
                 private_key = ec.generate_private_key(
-                    ec.SECP384R1()
+                ec.SECP384R1()
                 )
-                public_key = serialization.load_pem_public_key(self.sock.recv(384))
-                self.sock.send(private_key.public_key().public_bytes(
+                
+                public_key_and_signature = self.sock.recv(927)
+                if not gpg.verify(public_key_and_signature, extra_args=["-o", "./data"]):
+                    print("UNTRUSTED SIGNATURE!")
+                    exit()
+                with open("data", "rb") as file:
+                    public_key_data = file.read()
+                os.remove("data")
+
+                self.sock.send(gpg.sign(private_key.public_key().public_bytes(
                     encoding=serialization.Encoding.PEM,
                     format=serialization.PublicFormat.SubjectPublicKeyInfo
-                ))
+                )).data)
 
+                public_key = serialization.load_pem_public_key(public_key_data)
                 shared_key = private_key.exchange(ec.ECDH(), public_key)
                 derived_key = HKDF(
                     algorithm=hashes.SHA256(),
@@ -64,11 +77,19 @@ def getSharedSecret(client):
     private_key = ec.generate_private_key(
         ec.SECP384R1()
     )
-    client.sock.send(private_key.public_key().public_bytes(
+    client.sock.send(gpg.sign(private_key.public_key().public_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PublicFormat.SubjectPublicKeyInfo
-    ))
-    public_key = serialization.load_pem_public_key(client.sock.recv(384))
+    )).data)
+
+    public_key_and_signature = client.sock.recv(927)
+    if not gpg.verify(public_key_and_signature, extra_args=["-o", "./data"]):
+        print("UNTRUSTED SIGNATURE!")
+        exit()
+    with open("data", "rb") as file:
+        public_key_data = file.read()
+    os.remove("data")
+    public_key = serialization.load_pem_public_key(public_key_data)
     shared_key = private_key.exchange(ec.ECDH(), public_key)
     derived_key = HKDF(
         algorithm=hashes.SHA256(),
@@ -83,6 +104,8 @@ def getSharedSecret(client):
 
 client_ahead = None
 client_behind = None
+name = input("What is your name: ")
+crush = input("Who is your crush: ")
 
 AESKey = encryption.generateKey()
 
