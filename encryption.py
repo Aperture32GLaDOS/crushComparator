@@ -72,14 +72,12 @@ def decryptDataAES(key: bytes, encrypted: bytes, nonce: bytes, tag: bytes) -> by
 
 def hashStringWithSHA(string: str, salt: bytes = b'') -> str:
     data = string.encode("utf-8")
-    if len(salt) != 32 and salt != b"":
-        raise TypeError("The salt should be 32 bytes long.")
     if salt == b'':  # If the salt isn't given,
         salt = Crypto.Random.get_random_bytes(32)  # Generates 32 random bytes for a salt
     hashingFunction = Crypto.Hash.SHA512.new()
     hashingFunction.update(salt + data)
     hashedData = hashingFunction.hexdigest()
-    return salt.hex() + ":" + hashedData  # Gives the hash in the form salt:hash
+    return hashedData  # Gives the hash
 
 
 def hashStringWithArgon(string: str) -> str:

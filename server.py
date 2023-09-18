@@ -3,17 +3,22 @@ import encryption
 import socket
 import json
 import threading
+import time
+import random
 from events import Event
 
 private = encryption.readRSAKeyFromFile("private.key")
 public = encryption.readRSAKeyFromFile("public.key")
 clients = []
 eventList = []
+crushNames = {}
+nameCrushes = {}
 lock = threading.Lock()
 
 
 def handleEvents():
     while True:
+        time.sleep(0.5)
         if len(eventList) > 0:
             lock.acquire()
             event = eventList.pop(0)
@@ -24,7 +29,22 @@ def handleEvents():
                     clients[index - 1].sendUpdate({"clientAhead": clients[index].sock.getpeername()[0]})
                 except IndexError:
                     pass
+                except BrokenPipeError:
+                    pass
                 clients.remove(event.context["client"])
+                crushNames.clear()
+                nameCrushes.clear()
+            if event.name == "client-update":
+                for crushName in crushNames.keys():
+                    try:
+                        client1 = nameCrushes[crushName]
+                        client2 = crushNames[crushName]
+                        transport.sendDynamicData("success".encode("utf-8"), "pair", "utf-8", client1.sock, client1.AESKey)
+                        transport.sendDynamicData("success".encode("utf-8"), "pair", "utf-8", client2.sock, client2.AESKey)
+                    except KeyError:
+                        continue
+                crushNames.clear()
+                nameCrushes.clear()
             lock.release()
 
 
@@ -34,6 +54,7 @@ class Client:
     def __init__(self, sock, AESKey):
         self.sock = sock
         self.AESKey = AESKey
+        self.port = random.randint(2000, 60000)
         self.mainThread = threading.Thread(target=(self.listen), daemon=True)
         self.mainThread.start()
 
@@ -47,7 +68,18 @@ class Client:
     def listen(self):
         try:
             while True:
-                transport.receiveDynamicData(self.sock, self.AESKey)
+                dataType, encoding, data = transport.receiveDynamicData(self.sock, self.AESKey)
+                if dataType == "info":
+                    if data.decode(encoding) == "clients-updated":
+                        lock.acquire()
+                        eventList.append(Event("client-update", {}))
+                        lock.release()
+                        
+                elif dataType == "newCrushName":
+                    print("New info")
+                    crushNames[data.decode(encoding)] = self
+                elif dataType == "newNameCrush":
+                    nameCrushes[data.decode(encoding)] = self
         except:
             lock.acquire()
             eventList.append(Event("client-failure", {"client": self}))
@@ -57,6 +89,7 @@ HOST = "0.0.0.0"
 PORT = 6969
 
 eventsThread = threading.Thread(target=handleEvents, daemon=True)
+eventsThread.start()
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.bind((HOST, PORT))
@@ -68,5 +101,7 @@ while True:
     if len(clients) == 1:
         pass
     else:
-        clients[-2].sendUpdate({"clientAhead": clients[-1].sock.getpeername()[0]})
-        clients[-1].sendUpdate({"clientBehind": clients[-2].sock.getpeername()[0]})
+        clients[-2].sendUpdate({"clientAhead": clients[-1].sock.getpeername()[0], "port": clients[-1].port})
+        clients[-1].sendUpdate({"clientBehind": clients[-2].sock.getpeername()[0], "port": clients[-1].port})
+        crushNames.clear()
+        nameCrushes.clear()
