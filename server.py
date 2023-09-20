@@ -11,7 +11,9 @@ private = encryption.readRSAKeyFromFile("private.key")
 public = encryption.readRSAKeyFromFile("public.key")
 clients = []
 eventList = []
+# A dictionary which stores crush+name values and links them to the clients who sent them
 crushNames = {}
+# A dictionary which stores name+crush values and links them to the clients who sent them
 nameCrushes = {}
 lock = threading.Lock()
 
@@ -22,8 +24,10 @@ def handleEvents():
         if len(eventList) > 0:
             lock.acquire()
             event = eventList.pop(0)
+            # If a client has disconnected or otherwise shutdown
             if event.name == "client-failure":
                 index = clients.index(event.context["client"])
+                # Re-connect the p2p linked list
                 try:
                     clients[index].sendUpdate({"clientBehind": clients[index - 1].sock.getpeername()[0]})
                     clients[index - 1].sendUpdate({"clientAhead": clients[index].sock.getpeername()[0]})
@@ -31,10 +35,13 @@ def handleEvents():
                     pass
                 except BrokenPipeError:
                     pass
+                # And remove any mention of the client
                 clients.remove(event.context["client"])
                 crushNames.clear()
                 nameCrushes.clear()
+            # If the p2p linked list has updated its shared secret,
             if event.name == "client-update":
+                # Check for successful pairs
                 for crushName in crushNames.keys():
                     try:
                         client1 = nameCrushes[crushName]
@@ -74,14 +81,16 @@ class Client:
                         lock.acquire()
                         eventList.append(Event("client-update", {}))
                         lock.release()
+                        print("P2P linked list shared secret updated")
                         
                 elif dataType == "newCrushName":
-                    print("New info")
+                    print("New info from client")
                     crushNames[data.decode(encoding)] = self
                 elif dataType == "newNameCrush":
                     nameCrushes[data.decode(encoding)] = self
         except:
             lock.acquire()
+            print("Client disconnected")
             eventList.append(Event("client-failure", {"client": self}))
             lock.release()
 

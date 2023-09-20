@@ -73,50 +73,47 @@ class Client:
                     info=b'handshake data',
                 ).derive(shared_key)
                 self.secret = derived_key
-                print("Shared secret obtained!")
                 # If the client is at the end of the queue
                 if client_behind is not None and client_behind.secret is not None:
                     if client_ahead is None:
                         # Back-transmit the new shared secret
-                        print("Back-transmitting secret")
                         hashedCrushName = encryption.hashStringWithSHA((crush + name), self.secret)
                         hashedNameCrush = encryption.hashStringWithSHA((name + crush), self.secret)
                         transport.sendDynamicData(hashedCrushName.encode("utf-8"), "newCrushName", "utf-8", sock, AESKey)
                         transport.sendDynamicData(hashedNameCrush.encode("utf-8"), "newNameCrush", "utf-8", sock, AESKey)
+                        print("Sent crush info to server")
                         client_behind.sock.send(b"\x02")
                         transport.sendEncryptedData(self.secret, client_behind.sock, client_behind.secret)
                         client_behind.secret = self.secret
-                        print("Sent new info")
-                # If there is no client ahead, then all clients are up-to-date
+                # If there is no client behind, then all clients are up-to-date
                 else:
                     hashedCrushName = encryption.hashStringWithSHA((crush + name), self.secret)
                     hashedNameCrush = encryption.hashStringWithSHA((name + crush), self.secret)
                     transport.sendDynamicData(hashedCrushName.encode("utf-8"), "newCrushName", "utf-8", sock, AESKey)
                     transport.sendDynamicData(hashedNameCrush.encode("utf-8"), "newNameCrush", "utf-8", sock, AESKey)
-                    print("Shared secret transmitted")
+                    print("Sent crush info to server")
                     transport.sendDynamicData("clients-updated".encode("utf-8"), "info", "utf-8", sock, AESKey)
             if received == b"\x02":
                 self.secret = transport.receiveEncryptedData(32, self.sock, self.secret)
                 if client_behind is not None and client_behind.secret is not None:
-                    print("Back-transmitting secret")
                     if self.secret is None:
                         self.secret = client_ahead.secret
                     hashedCrushName = encryption.hashStringWithSHA((crush + name), self.secret)
                     hashedNameCrush = encryption.hashStringWithSHA((name + crush), self.secret)
                     transport.sendDynamicData(hashedCrushName.encode("utf-8"), "newCrushName", "utf-8", sock, AESKey)
                     transport.sendDynamicData(hashedNameCrush.encode("utf-8"), "newNameCrush", "utf-8", sock, AESKey)
+                    print("Sent crush info to server")
                     client_behind.sock.send(b"\x02")
                     transport.sendEncryptedData(self.secret, client_behind.sock, client_behind.secret)
                     client_behind.secret = self.secret
-                    print("Sent new info")
 
-                # If there is no client ahead, then all clients are up-to-date
+                # If there is no client behind, then all clients are up-to-date
                 else:
-                    print("Shared secret transmitted")
                     hashedCrushName = encryption.hashStringWithSHA((crush + name), self.secret)
                     hashedNameCrush = encryption.hashStringWithSHA((name + crush), self.secret)
                     transport.sendDynamicData(hashedCrushName.encode("utf-8"), "newCrushName", "utf-8", sock, AESKey)
                     transport.sendDynamicData(hashedNameCrush.encode("utf-8"), "newNameCrush", "utf-8", sock, AESKey)
+                    print("Sent crush info to server")
                     transport.sendDynamicData("clients-updated".encode("utf-8"), "info", "utf-8", sock, AESKey)
 
 
